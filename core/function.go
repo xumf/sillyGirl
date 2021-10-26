@@ -5,7 +5,9 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/beego/beego/v2/core/logs"
 	cron "github.com/robfig/cron/v3"
@@ -14,6 +16,9 @@ import (
 var c *cron.Cron
 
 func init() {
+	if runtime.GOOS != "windows" {
+		pname = regexp.MustCompile(`/([^/\s]+)$`).FindStringSubmatch(os.Args[0])[1]
+	}
 	c = cron.New()
 	c.Start()
 }
@@ -26,7 +31,7 @@ type Function struct {
 	Cron    string
 }
 
-var pname = regexp.MustCompile(`/([^/\s]+)$`).FindStringSubmatch(os.Args[0])[1]
+var pname = ""
 
 var name = func() string {
 	return sillyGirl.Get("name", "傻妞")
@@ -82,6 +87,27 @@ func AddCommand(prefix string, cmds []Function) {
 
 func handleMessage(sender Sender) {
 	defer sender.Finish()
+	recall := sillyGirl.Get("recall")
+	if recall != "" {
+		recalled := false
+		for _, v := range strings.Split(recall, "&") {
+			reg, err := regexp.Compile(v)
+			if err == nil {
+				if reg.FindString(sender.GetContent()) != "" {
+					if !sender.IsAdmin() && sender.GetImType() != "wx" {
+						sender.Delete()
+						sender.Reply("本妞清除了不好的消息～", time.Duration(time.Second))
+						recalled = true
+						break
+					}
+				}
+			}
+		}
+		if recalled == true {
+			return
+		}
+	}
+
 	defer func() {
 		logs.Info("%v ==> %v", sender.GetContent(), "finished")
 	}()
@@ -166,6 +192,19 @@ func handleMessage(sender Sender) {
 		}
 	goon:
 	}
+	reply.Foreach(func(k, v []byte) error {
+		if string(v) == "" {
+			return nil
+		}
+		reg, err := regexp.Compile(string(k))
+		if err == nil {
+			if reg.FindString(sender.GetContent()) != "" {
+				sender.Reply(string(v))
+			}
+		}
+		return nil
+	})
+
 }
 
 func FetchCookieValue(ps ...string) string {

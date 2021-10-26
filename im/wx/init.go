@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/axgle/mahonia"
 	"github.com/beego/beego/v2/adapter/httplib"
@@ -112,7 +113,7 @@ func init() {
 		}
 		for _, v := range regexp.MustCompile(`\[CQ:image,file=([^\[\]]+)\]`).FindAllStringSubmatch(s, -1) {
 			s = strings.Replace(s, fmt.Sprintf(`[CQ:image,file=%s]`, v[1]), "", -1)
-			data, err := os.ReadFile(core.ExecPath + "/data/images/" + v[1])
+			data, err := os.ReadFile("data/images/" + v[1])
 			if err == nil {
 				add := regexp.MustCompile("(https.*)").FindString(string(data))
 				if add != "" {
@@ -145,6 +146,10 @@ func init() {
 		if jms.FinalFromWxid == jms.RobotWxid {
 			return
 		}
+		listen := wx.Get("onGroups")
+		if jms.Event == "EventGroupMsg" && listen != "" && !strings.Contains(listen, strings.Replace(fmt.Sprint(jms.FromWxid), "@chatroom", "", -1)) {
+			return
+		}
 		if robot_wxid != jms.RobotWxid {
 			robot_wxid = jms.RobotWxid
 			wx.Set("robot_wxid", robot_wxid)
@@ -160,7 +165,12 @@ func init() {
 			io.Copy(c.Writer, rsp.Body)
 		}
 	})
+	core.Server.GET("/wximage", func(c *gin.Context) {
+		c.Writer.Write([]byte{})
+	})
 }
+
+var wxbase sync.Map
 
 var myip = ""
 var relaier = wx.Get("relaier")
@@ -191,20 +201,29 @@ type Sender struct {
 }
 
 type JsonMsg struct {
-	Event         string `json:"event"`
-	RobotWxid     string `json:"robot_wxid"`
-	RobotName     string `json:"robot_name"`
-	Type          int    `json:"type"`
-	FromWxid      string `json:"from_wxid"`
-	FromName      string `json:"from_name"`
-	FinalFromWxid string `json:"final_from_wxid"`
-	FinalFromName string `json:"final_from_name"`
-	ToWxid        string `json:"to_wxid"`
-	Msg           string `json:"msg"`
+	Event         string      `json:"event"`
+	RobotWxid     string      `json:"robot_wxid"`
+	RobotName     string      `json:"robot_name"`
+	Type          int         `json:"type"`
+	FromWxid      string      `json:"from_wxid"`
+	FromName      string      `json:"from_name"`
+	FinalFromWxid string      `json:"final_from_wxid"`
+	FinalFromName string      `json:"final_from_name"`
+	ToWxid        string      `json:"to_wxid"`
+	Msg           interface{} `json:"msg"`
 }
 
 func (sender *Sender) GetContent() string {
-	return sender.value.Msg
+	if sender.Content != "" {
+		return sender.Content
+	}
+	switch sender.value.Msg.(type) {
+	case int, int64, int32:
+		return fmt.Sprintf("%d", sender.value.Msg)
+	case float64:
+		return fmt.Sprintf("%d", int(sender.value.Msg.(float64)))
+	}
+	return fmt.Sprint(sender.value.Msg)
 }
 func (sender *Sender) GetUserID() interface{} {
 	return sender.value.FinalFromWxid
@@ -243,6 +262,14 @@ func (sender *Sender) Reply(msgs ...interface{}) (int, error) {
 		switch item.(type) {
 		case string:
 			pmsg.Msg = item.(string)
+			images := []string{}
+			for _, v := range regexp.MustCompile(`\[CQ:image,file=base64://([^\[\]]+)\]`).FindAllStringSubmatch(pmsg.Msg, -1) {
+				images = append(images, v[1])
+				pmsg.Msg = strings.Replace(pmsg.Msg, fmt.Sprintf(`[CQ:image,file=base64://%s]`, v[1]), "", -1)
+			}
+			// for _, image := range images {
+			// 	wxbase
+			// }
 		case []byte:
 			pmsg.Msg = string(item.([]byte))
 		case core.ImageUrl:

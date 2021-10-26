@@ -22,7 +22,7 @@ func init() {
 		}
 	}
 	initStore()
-	ReadYaml(ExecPath+"/conf/", &Config, "https://raw.githubusercontent.com/cdle/sillyGirl/main/conf/demo_config.yaml")
+	ReadYaml("conf/", &Config, "https://raw.githubusercontent.com/cdle/sillyGirl/main/conf/demo_config.yaml")
 	InitReplies()
 	initToHandleMessage()
 	file, err := os.Open("/etc/sillyGirl/sets.conf")
@@ -42,4 +42,9 @@ func init() {
 	initSys()
 	Duration = time.Duration(sillyGirl.GetInt("duration", 5)) * time.Second
 	sillyGirl.Set("started_at", time.Now().Format("2006-01-02 15:04:05"))
+	api_key := sillyGirl.Get("api_key")
+	if api_key == "" {
+		api_key := time.Now().UnixNano()
+		sillyGirl.Set("api_key", api_key)
+	}
 }

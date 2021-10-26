@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -58,6 +59,9 @@ func initSys() {
 			Cron:  "*/1 * * * *",
 			Admin: true,
 			Handle: func(s Sender) interface{} {
+				if runtime.GOOS == "windows" {
+					return "windows系统不支持此命令"
+				}
 				if s.GetImType() == "fake" && !sillyGirl.GetBool("auto_update", true) {
 					return nil
 				}
@@ -218,6 +222,7 @@ func initSys() {
 		},
 		{
 			Rules: []string{"notify ?"},
+			Admin: true,
 			Handle: func(s Sender) interface{} {
 				NotifyMasters(s.Get())
 				return "通知成功。"
@@ -313,7 +318,7 @@ Alias=sillyGirl.service`
 								return "你认输有个屁用。"
 							}
 						}
-						if regexp.MustCompile("^"+begin).FindString(ct) == "" {
+						if regexp.MustCompile("^"+begin).FindString(ct) == "" || strings.Contains(ct, "接龙") {
 							if me {
 								return fmt.Sprintf("现在是接【%s】开头的成语哦。", begin)
 							} else {

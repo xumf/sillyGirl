@@ -21,6 +21,9 @@ type Sender struct {
 }
 
 func (sender *Sender) GetContent() string {
+	if sender.Content != "" {
+		return sender.Content
+	}
 	text := ""
 	switch sender.Message.(type) {
 	case *message.PrivateMessage:
@@ -147,7 +150,7 @@ func (sender *Sender) Reply(msgs ...interface{}) (int, error) {
 			}
 		}
 		if content != "" {
-			bot.SendPrivateMessage(m.Sender.Uin, 0, &message.SendingMessage{Elements: []message.IMessageElement{&message.TextElement{Content: content}}})
+			bot.SendPrivateMessage(m.Sender.Uin, 0, &message.SendingMessage{Elements: bot.ConvertStringMessage(content, false)})
 		}
 	case *message.TempMessage:
 		m := sender.Message.(*message.TempMessage)
@@ -169,7 +172,7 @@ func (sender *Sender) Reply(msgs ...interface{}) (int, error) {
 			}
 		}
 		if content != "" {
-			bot.SendPrivateMessage(m.Sender.Uin, m.GroupCode, &message.SendingMessage{Elements: []message.IMessageElement{&message.TextElement{Content: content}}})
+			bot.SendPrivateMessage(m.Sender.Uin, m.GroupCode, &message.SendingMessage{Elements: bot.ConvertStringMessage(content, false)})
 		}
 	case *message.GroupMessage:
 		var id int32
@@ -195,7 +198,8 @@ func (sender *Sender) Reply(msgs ...interface{}) (int, error) {
 			if strings.Contains(content, "\n") {
 				content = "\n" + content
 			}
-			id = bot.SendGroupMessage(m.GroupCode, &message.SendingMessage{Elements: []message.IMessageElement{&message.AtElement{Target: m.Sender.Uin}, &message.TextElement{Content: content}}})
+			id = bot.SendGroupMessage(m.GroupCode, &message.SendingMessage{Elements: append([]message.IMessageElement{
+				&message.AtElement{Target: m.Sender.Uin}}, bot.ConvertStringMessage(content, true)...)}) //
 		}
 		if id > 0 && sender.Duration != nil {
 			if *sender.Duration != 0 {

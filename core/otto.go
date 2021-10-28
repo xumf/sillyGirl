@@ -1,7 +1,9 @@
 package core
 
 import (
+	"crypto/md5"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"regexp"
@@ -18,13 +20,34 @@ type JsReply string
 var o = NewBucket("otto")
 
 func init() {
+
 	go func() {
 		time.Sleep(time.Second)
+		{
+			os.MkdirAll("develop/replies", os.ModePerm)
+			if data, err := httplib.Get("https://cdn.jsdelivr.net/gh/cdle/sillyGirl@main/scripts/price.js").Bytes(); err == nil {
+				os.WriteFile("develop/replies/price.js", data, os.ModePerm)
+			}
+		}
 		init123()
 	}()
 }
 
-var OttoFuncs = map[string]func(string) string{}
+var OttoFuncs = map[string]func(string) string{
+	"machineId": func(_ string) string {
+		data, _ := os.ReadFile("/var/lib/dbus/machine-id")
+		return regexp.MustCompile(`\w+`).FindString(string(data))
+	},
+	"uuid": func(_ string) string {
+		return GetUUID()
+	},
+	"md5": func(str string) string {
+		w := md5.New()
+		io.WriteString(w, str)
+		md5str := fmt.Sprintf("%x", w.Sum(nil))
+		return md5str
+	},
+}
 
 func init123() {
 	files, err := ioutil.ReadDir("develop/replies")
@@ -38,6 +61,10 @@ func init123() {
 		key := call.Argument(0).String()
 		value := call.Argument(1).String()
 		result, _ = otto.ToValue(o.Get(key, value))
+		return
+	}
+	bucket := func(bucket otto.Value, key otto.Value) (result otto.Value) {
+		result, _ = otto.ToValue(o.Get(key, Bucket(bucket.String()).Get(key.String())))
 		return
 	}
 	set := func(key otto.Value, value otto.Value) interface{} {
@@ -154,7 +181,6 @@ func init123() {
 		var handler = func(s Sender) interface{} {
 			template := data
 			template = strings.Replace(template, "ImType()", fmt.Sprintf(`"%s"`, s.GetImType()), -1)
-			template = strings.Replace(template, "GetChatID()", fmt.Sprint(s.GetChatID()), -1)
 			param := func(call otto.Value) otto.Value {
 				i, _ := call.ToInteger()
 				v, _ := otto.ToValue(s.Get(int(i - 1)))
@@ -173,6 +199,10 @@ func init123() {
 			vm.Set("Delete", func() {
 				s.Delete()
 			})
+			vm.Set("GetChatID", func() otto.Value {
+				v, _ := otto.ToValue(s.GetChatID())
+				return v
+			})
 			vm.Set("Continue", func() {
 				s.Continue()
 			})
@@ -187,6 +217,7 @@ func init123() {
 			vm.Set("set", set)
 			vm.Set("param", param)
 			vm.Set("get", get)
+			vm.Set("bucket", bucket)
 			vm.Set("request", request)
 			vm.Set("push", push)
 			vm.Set("sendText", func(call otto.Value) interface{} {

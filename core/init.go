@@ -25,6 +25,7 @@ func init() {
 	ReadYaml("conf/", &Config, "https://raw.githubusercontent.com/cdle/sillyGirl/main/conf/demo_config.yaml")
 	InitReplies()
 	initToHandleMessage()
+
 	file, err := os.Open("/etc/sillyGirl/sets.conf")
 	if err == nil {
 		scanner := bufio.NewScanner(file)
@@ -46,5 +47,8 @@ func init() {
 	if api_key == "" {
 		api_key := time.Now().UnixNano()
 		sillyGirl.Set("api_key", api_key)
+	}
+	if sillyGirl.Get("uuid") == "" {
+		sillyGirl.Set("uuid", GetUUID())
 	}
 }

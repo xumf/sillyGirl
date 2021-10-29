@@ -12,6 +12,7 @@ import (
 
 	"github.com/beego/beego/v2/adapter/httplib"
 	"github.com/beego/beego/v2/adapter/logs"
+	"github.com/denisbrodbeck/machineid"
 	"github.com/robertkrimen/otto"
 )
 
@@ -20,12 +21,14 @@ type JsReply string
 var o = NewBucket("otto")
 
 func init() {
-
 	go func() {
 		time.Sleep(time.Second)
 		{
 			os.MkdirAll("develop/replies", os.ModePerm)
-			if data, err := httplib.Get("https://cdn.jsdelivr.net/gh/cdle/sillyGirl@main/scripts/price.js").Bytes(); err == nil {
+			// if data, err := httplib.Get("https://cdn.jsdelivr.net/gh/cdle/sillyGirl@main/scripts/price.js").Bytes(); err == nil {
+			// 	os.WriteFile("develop/replies/price.js", data, os.ModePerm)
+			// }
+			if data, err := os.ReadFile("scripts/price.js"); err == nil {
 				os.WriteFile("develop/replies/price.js", data, os.ModePerm)
 			}
 		}
@@ -35,8 +38,21 @@ func init() {
 
 var OttoFuncs = map[string]func(string) string{
 	"machineId": func(_ string) string {
-		data, _ := os.ReadFile("/var/lib/dbus/machine-id")
-		return regexp.MustCompile(`\w+`).FindString(string(data))
+		// data, _ := os.ReadFile("/var/lib/dbus/machine-id")
+		// id := regexp.MustCompile(`\w+`).FindString(string(data))
+		// if id == "" {
+		// 	data, _ = os.ReadFile("/etc/machine-id")
+		// 	id = regexp.MustCompile(`\w+`).FindString(string(data))
+		// }
+		id, err := machineid.ProtectedID("sillyGirl")
+		if err != nil {
+			id = sillyGirl.Get("machineId")
+			if id == "" {
+				id = GetUUID()
+				sillyGirl.Set("machineId", id)
+			}
+		}
+		return id
 	},
 	"uuid": func(_ string) string {
 		return GetUUID()
@@ -46,6 +62,9 @@ var OttoFuncs = map[string]func(string) string{
 		io.WriteString(w, str)
 		md5str := fmt.Sprintf("%x", w.Sum(nil))
 		return md5str
+	},
+	"timeFormat": func(str string) string {
+		return time.Now().Format(str)
 	},
 }
 

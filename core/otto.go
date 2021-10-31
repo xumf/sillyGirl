@@ -25,9 +25,10 @@ func init() {
 		time.Sleep(time.Second)
 		if sillyGirl.GetBool("enable_price", true) {
 			os.MkdirAll("develop/replies", os.ModePerm)
-			if data, err := os.ReadFile("scripts/price.js"); err == nil {
-				os.WriteFile("develop/replies/price.js", data, os.ModePerm)
+			if data, err := os.ReadFile("scripts/jd_price.js"); err == nil {
+				os.WriteFile("develop/replies/jd_price.js", data, os.ModePerm)
 			}
+			os.Remove("develop/replies/price.js")
 		}
 		init123()
 	}()
@@ -195,7 +196,11 @@ func init123() {
 			continue
 		}
 		var handler = func(s Sender) interface{} {
-			template := data
+			data, err := os.ReadFile(jr)
+			if err != nil {
+				return nil
+			}
+			template := string(data)
 			template = strings.Replace(template, "ImType()", fmt.Sprintf(`"%s"`, s.GetImType()), -1)
 			param := func(call otto.Value) otto.Value {
 				i, _ := call.ToInteger()
@@ -232,6 +237,10 @@ func init123() {
 			vm.Set("GetUsername", func() otto.Value {
 				v, _ := otto.ToValue(s.GetUsername())
 				return v
+			})
+			vm.Set("Debug", func(str otto.Value) otto.Value {
+				logs.Debug(str)
+				return otto.Value{}
 			})
 			vm.Set("GetUserID", func() otto.Value {
 				v, _ := otto.ToValue(s.GetUserID())

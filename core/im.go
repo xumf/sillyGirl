@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 )
@@ -32,6 +33,7 @@ type Sender interface {
 	Continue()
 	IsContinue() bool
 	Await(Sender, func(Sender) interface{}, ...interface{})
+	Copy() Sender
 }
 
 type Edit int
@@ -131,6 +133,11 @@ func (sender *Faker) Disappear(lifetime ...time.Duration) {
 
 func (sender *Faker) Finish() {
 
+}
+
+func (sender *Faker) Copy() Sender {
+	new := reflect.Indirect(reflect.ValueOf(interface{}(sender))).Interface().(Faker)
+	return &new
 }
 
 type BaseSender struct {

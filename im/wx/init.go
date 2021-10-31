@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -154,9 +155,9 @@ func init() {
 			robot_wxid = jms.RobotWxid
 			wx.Set("robot_wxid", robot_wxid)
 		}
-		if wx.Get("api_url") == "" {
+		if wx.GetBool("keaimao_dynamic_ip", false) {
 			ip, _ := c.RemoteIP()
-			wx.Set("api_url", fmt.Sprintf("http://%s:80", ip.String())) //
+			wx.Set("api_url", fmt.Sprintf("http://%s:%s", ip.String(), wx.Get("keaimao_port", "8080"))) //
 		}
 		core.Senders <- &Sender{
 			value: jms,
@@ -186,7 +187,7 @@ func relay(url string) string {
 	if relaier != "" {
 		return fmt.Sprintf(relaier, url)
 	} else {
-		if myip == "" || wx.GetBool("dynamic_ip", false) == true {
+		if myip == "" || wx.GetBool("sillyGirl_dynamic_ip", false) == true {
 			ip, _ := httplib.Get("https://imdraw.com/ip").String()
 			if ip != "" {
 				myip = ip
@@ -309,4 +310,9 @@ func md5V(str string) string {
 	h := md5.New()
 	h.Write([]byte(str))
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+func (sender *Sender) Copy() core.Sender {
+	new := reflect.Indirect(reflect.ValueOf(interface{}(sender))).Interface().(Sender)
+	return &new
 }

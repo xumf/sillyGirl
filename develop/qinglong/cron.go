@@ -206,6 +206,9 @@ func init() {
 					if strings.Contains(s, "smiek2221") {
 						return 9
 					}
+					if strings.Contains(s, "smiek2121") {
+						return 9
+					}
 					if strings.Contains(s, "Aaron-lv") {
 						return -8
 					}
@@ -228,7 +231,7 @@ func init() {
 						Config.Req(CRONS, PUT, "/disable", []byte(fmt.Sprintf(`["%s"]`, crons[i].ID)))
 						continue
 					}
-					if strings.Contains(crons[i].Command, "1111") || strings.Contains(strings.ToLower(crons[i].Command), "jd_red.js") || strings.Contains(strings.ToLower(crons[i].Command), "jd_hongbao.js") {
+					if strings.Contains(crons[i].Command, "jd_redEnvelope.js") || strings.Contains(strings.ToLower(crons[i].Command), "jd_red.js") || strings.Contains(strings.ToLower(crons[i].Command), "jd_hongbao.js") || strings.Contains(crons[i].Command, "1111") {
 						if !strings.Contains(crons[i].Command, "cdle") {
 							Config.Req(CRONS, PUT, "/disable", []byte(fmt.Sprintf(`["%s"]`, crons[i].ID)))
 						} else {

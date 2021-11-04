@@ -1,0 +1,61 @@
+name: Go
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.17
+
+    - name: Git clone cable
+      run:
+        cd develop && git clone https://${{ secrets.CABLE_TOKEN }}@github.com/cdle/cable.git
+        
+    - name: Git clone jd_price
+      run:
+        cd develop && git clone https://github.com/cdle/jd_price.git
+        
+    - name: Git clone jd_cookie
+      run:
+        cd develop && git clone https://github.com/ufuckee/jd_cookie.git
+        
+    - name: Create dev.go
+      run:
+        mv dev.go.demo dev.go
+
+    - name: Build amd64
+      run: GOOS=linux GOARCH=amd64 go build -o sillyGirl_linux_amd64
+      
+    - name: Upload amd64
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: sillyGirl_linux_amd64
+        asset_name: sillyGirl_linux_amd64
+        tag: ${{ github.ref }}
+        overwrite: true
+      
+    - name: Build arm64
+      run: GOOS=linux GOARCH=arm64 go build -o sillyGirl_linux_arm64
+      
+    - name: Upload arm64
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: sillyGirl_linux_arm64
+        asset_name: sillyGirl_linux_arm64
+        tag: ${{ github.ref }}
+        overwrite: true
+      
+

@@ -47,6 +47,13 @@ func init() {
 
 func initSys() {
 	AddCommand("", []Function{
+		// {//
+		// 	Rules: []string{"unintsall sillyGirl"},
+		// 	Admin: true,
+		// 	Handle: func(s Sender) interface{} {
+		// 		return ""
+		// 	},
+		// },
 		{
 			Rules: []string{"raw ^name$"},
 			Handle: func(s Sender) interface{} {
@@ -63,8 +70,24 @@ func initSys() {
 					return "windows系统不支持此命令"
 				}
 				if s.GetImType() == "fake" && !sillyGirl.GetBool("auto_update", true) {
+
 					return nil
 				}
+				if s.GetImType() != "fake" {
+					if sillyGirl.Get("compiled_at") == "" {
+						s.Reply("开始下载文件...")
+						err := Download()
+						if err != nil {
+							return err
+						}
+						s.Reply("更新完成，即将重启！", E)
+						go func() {
+							time.Sleep(time.Second)
+							Daemon()
+						}()
+					}
+				}
+
 				s.Reply("开始检查核心更新...", E)
 				update := false
 				record := func(b bool) {

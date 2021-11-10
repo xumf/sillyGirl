@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"runtime"
 	"strings"
 	"time"
 
@@ -16,9 +15,6 @@ import (
 var c *cron.Cron
 
 func init() {
-	if runtime.GOOS != "windows" {
-		pname = regexp.MustCompile(`/([^/\s]+)$`).FindStringSubmatch(os.Args[0])[1]
-	}
 	c = cron.New()
 	c.Start()
 }
@@ -31,7 +27,7 @@ type Function struct {
 	Cron    string
 }
 
-var pname = ""
+var pname = regexp.MustCompile(`/([^/\s]+)$`).FindStringSubmatch(os.Args[0])[1]
 
 var name = func() string {
 	return sillyGirl.Get("name", "傻妞")
@@ -124,6 +120,7 @@ func handleMessage(sender Sender) {
 	if mtd && !con {
 		return
 	}
+	// logs.Info("%v ==> %v", sender.GetContent(), "passed")
 	// if v, ok := waits.Load(key); ok {
 	// 	c := v.(*Carry)
 	// 	if m := regexp.MustCompile(c.Pattern).FindString(sender.GetContent()); m != "" {

@@ -255,6 +255,10 @@ var YesNo YesOrNo = "yeson"
 var Yes YesOrNo = "yes"
 var No YesOrNo = "no"
 
+type Range []int
+
+type Switch []string
+
 var ForGroup forGroup
 
 func (_ *BaseSender) Await(sender Sender, callback func(Sender) interface{}, params ...interface{}) interface{} {
@@ -280,9 +284,9 @@ func (_ *BaseSender) Await(sender Sender, callback func(Sender) interface{}, par
 			fg = &a
 		}
 	}
-	if callback == nil {
-		return nil
-	}
+	// if callback == nil {
+	// 	return nil
+	// }
 	if c.Pattern == "" {
 		c.Pattern = `[\s\S]*`
 	}
@@ -305,6 +309,9 @@ func (_ *BaseSender) Await(sender Sender, callback func(Sender) interface{}, par
 			switch result.(type) {
 			case Sender:
 				s := result.(Sender)
+				if callback == nil {
+					return s.GetContent()
+				}
 				result := callback(s)
 				if v, ok := result.(again); ok {
 					if v == "" {
@@ -321,6 +328,20 @@ func (_ *BaseSender) Await(sender Sender, callback func(Sender) interface{}, par
 						return No
 					}
 					c.Result <- "Y or n ?"
+				} else if vv, ok := result.(Switch); ok {
+					ct := s.GetContent()
+					for _, v := range vv {
+						if ct == v {
+							return v
+						}
+					}
+					c.Result <- fmt.Sprintf("请从%s中选择一个。", strings.Join(vv, "、"))
+				} else if vv, ok := result.(Range); ok {
+					n := Int(s.GetContent())
+					if (n >= vv[0]) && (n <= vv[1]) {
+						return n
+					}
+					c.Result <- fmt.Sprintf("请从%d~%d中选择一个整数。", vv[0], vv[1])
 				} else {
 					c.Result <- result
 					return nil

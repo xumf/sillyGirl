@@ -214,15 +214,15 @@ func start() {
 		log.Warnf("Bot已离线: %v", e.Message)
 		time.Sleep(time.Second * time.Duration(conf.Account.ReLogin.Delay))
 		for {
-			if conf.Account.ReLogin.Disabled {
-				// os.Exit(1)
-				return
-			}
-			if times > conf.Account.ReLogin.MaxTimes && conf.Account.ReLogin.MaxTimes != 0 {
-				log.Warnf("Bot重连次数超过限制, 停止")
-				// log.Fatalf("Bot重连次数超过限制, 停止")
-				return
-			}
+			// if conf.Account.ReLogin.Disabled {
+			// 	// os.Exit(1)
+			// 	return
+			// }
+			// if times > conf.Account.ReLogin.MaxTimes && conf.Account.ReLogin.MaxTimes != 0 {
+			// 	log.Warnf("Bot重连次数超过限制, 停止")
+			// 	// log.Fatalf("Bot重连次数超过限制, 停止")
+			// 	return
+			// }
 			times++
 			if conf.Account.ReLogin.Interval > 0 {
 				log.Warnf("将在 %v 秒后尝试重连. 重连次数：%v/%v", conf.Account.ReLogin.Interval, times, conf.Account.ReLogin.MaxTimes)
@@ -292,16 +292,16 @@ func start() {
 	bot.Client.OnPrivateMessage(onPrivateMessage)
 	bot.Client.OnGroupMessage(OnGroupMessage)
 	bot.Client.OnTempMessage(onTempMessage)
-	bot.Client.OnSelfPrivateMessage(func(q *client.QQClient, pm *message.PrivateMessage) {
-		if qq.GetBool("onself", true) == true {
-			onPrivateMessage(q, pm)
-		}
-	})
-	bot.Client.OnSelfGroupMessage(func(q *client.QQClient, gm *message.GroupMessage) {
-		if qq.GetBool("onself", true) == true {
-			OnGroupMessage(q, gm)
-		}
-	})
+	// bot.Client.OnSelfPrivateMessage(func(q *client.QQClient, pm *message.PrivateMessage) {
+	// 	if qq.GetBool("onself", true) == true {
+	// 		onPrivateMessage(q, pm)
+	// 	}
+	// })
+	// bot.Client.OnSelfGroupMessage(func(q *client.QQClient, gm *message.GroupMessage) {
+	// 	if qq.GetBool("onself", true) == true {
+	// 		OnGroupMessage(q, gm)
+	// 	}
+	// })
 	bot.Client.OnNewFriendRequest(func(_ *client.QQClient, request *client.NewFriendRequest) {
 		if qq.GetBool("auto_friend", false) == true {
 			time.Sleep(time.Second)
@@ -310,9 +310,16 @@ func start() {
 		}
 	})
 	core.Pushs["qq"] = func(i interface{}, s string) {
-		bot.SendPrivateMessage(core.Int64(i), int64(qq.GetInt("tempMessageGroupCode")), &message.SendingMessage{Elements: bot.ConvertStringMessage(s, false)})
+		if !cli.Online {
+			return
+		}
+		bot.SendPrivateMessage(core.Int64(i), 0, &message.SendingMessage{Elements: bot.ConvertStringMessage(s, false)})
+		// bot.SendPrivateMessage(core.Int64(i), int64(qq.GetInt("tempMessageGroupCode")), &message.SendingMessage{Elements: bot.ConvertStringMessage(s, false)})
 	}
 	core.GroupPushs["qq"] = func(i, _ interface{}, s string) {
+		if !cli.Online {
+			return
+		}
 		paths := []string{}
 		for _, v := range regexp.MustCompile(`\[TG:image,file=([^\[\]]+)\]`).FindAllStringSubmatch(s, -1) {
 			paths = append(paths, "data/images/"+v[1])

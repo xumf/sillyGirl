@@ -69,9 +69,9 @@ var OttoFuncs = map[string]func(string) string{
 }
 
 func init123() {
-	files, err := ioutil.ReadDir("develop/replies")
+	files, err := ioutil.ReadDir(ExecPath + "/develop/replies")
 	if err != nil {
-		os.MkdirAll("develop/replies", os.ModePerm)
+		os.MkdirAll(ExecPath+"/develop/replies", os.ModePerm)
 		// logs.Warn("打开文件夹%s错误，%v", "develop/replies", err)
 		return
 	}
@@ -82,9 +82,13 @@ func init123() {
 		result, _ = otto.ToValue(o.Get(key, value))
 		return
 	}
-	bucket := func(bucket otto.Value, key otto.Value) (result otto.Value) {
+	bucketGet := func(bucket otto.Value, key otto.Value) (result otto.Value) {
 		result, _ = otto.ToValue(o.Get(key, Bucket(bucket.String()).Get(key.String())))
 		return
+	}
+	bucketSet := func(bucket otto.Value, key otto.Value, value otto.Value) (result otto.Value) {
+		Bucket(bucket.String()).Set(key.String(), value.String())
+		return otto.Value{}
 	}
 	set := func(key otto.Value, value otto.Value) interface{} {
 		o.Set(key.String(), value.String())
@@ -126,6 +130,10 @@ func init123() {
 			v, _ := call.Object().Get("body")
 			body = v.String()
 		}
+		{
+			v, _ := call.Object().Get("method")
+			method = v.String()
+		}
 		var req *httplib.BeegoHTTPRequest
 		switch strings.ToLower(method) {
 		case "delete":
@@ -164,7 +172,7 @@ func init123() {
 		if !strings.Contains(v.Name(), ".js") {
 			continue
 		}
-		jr := string("develop/replies/" + v.Name())
+		jr := ExecPath + "/develop/replies/" + v.Name()
 		data := ""
 		if strings.Contains(jr, "http") {
 			data, err = httplib.Get(jr).String()
@@ -251,7 +259,8 @@ func init123() {
 			vm.Set("set", set)
 			vm.Set("param", param)
 			vm.Set("get", get)
-			vm.Set("bucket", bucket)
+			vm.Set("bucketGet", bucketGet)
+			vm.Set("bucketSet", bucketSet)
 			vm.Set("request", request)
 			vm.Set("push", push)
 			vm.Set("sendText", func(call otto.Value) interface{} {

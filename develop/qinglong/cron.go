@@ -29,7 +29,7 @@ type Cron struct {
 	Pid        interface{} `json:"pid"`
 }
 
-func init() {
+func initCron() {
 	core.AddCommand("ql", []core.Function{
 		// {
 		// 	Rules: []string{`fuck_xxs`},
@@ -202,9 +202,6 @@ func init() {
 					}
 					if strings.Contains(s, "shufflewzc") {
 						return 1
-					}
-					if strings.Contains(s, "smiek2221") {
-						return 9
 					}
 					if strings.Contains(s, "smiek2121") {
 						return 9

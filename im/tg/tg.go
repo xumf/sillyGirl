@@ -84,9 +84,6 @@ func init() {
 		}
 		buildHttpTransportWithProxy()
 		token := tg.Get("token")
-		if runtime.GOOS == "darwin" {
-			token = "1972873850:AAFRySWmNYOpbidGTKxRv6oxDs3xXnsfn1U"
-		}
 		if token == "" {
 			logs.Warn("未提供telegram机器人token")
 			return

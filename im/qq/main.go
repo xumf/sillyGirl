@@ -255,6 +255,7 @@ func start() {
 	saveToken()
 	cli.AllowSlider = true
 	log.Infof("登录成功 欢迎使用: %v", cli.Nickname)
+	qq.Set("bot_id", cli.Uin)
 	global.Check(cli.ReloadFriendList(), true)
 	global.Check(cli.ReloadGroupList(), true)
 	if conf.Account.Status >= int32(len(allowStatus)) || conf.Account.Status < 0 {
@@ -293,14 +294,24 @@ func start() {
 	bot.Client.OnGroupMessage(OnGroupMessage)
 	bot.Client.OnTempMessage(onTempMessage)
 	// bot.Client.OnSelfPrivateMessage(func(q *client.QQClient, pm *message.PrivateMessage) {
-	// 	if qq.GetBool("onself", true) == true {
-	// 		onPrivateMessage(q, pm)
-	// 	}
+	// 	time.Sleep(time.Microsecond * 500)
+	// 	logs.Debug("receive message-id=%d internal-id=%d self=%d target=%d", pm.Id, pm.InternalId, pm.Self, pm.Target)
+	// 	// if _, ok := dd.Load(pm.InternalId); ok {
+	// 	// 	return
+	// 	// }
+	// 	// if qq.GetBool("onself", true) == true {
+	// 	onPrivateMessage(q, pm)
+	// 	// }
 	// })
 	// bot.Client.OnSelfGroupMessage(func(q *client.QQClient, gm *message.GroupMessage) {
-	// 	if qq.GetBool("onself", true) == true {
-	// 		OnGroupMessage(q, gm)
-	// 	}
+	// 	time.Sleep(time.Microsecond * 500)
+	// 	logs.Debug("receive message-id=%d internal-id=%d", gm.Id, gm.InternalId)
+	// 	// if _, ok := dd.Load(gm.InternalId); ok {
+	// 	// 	return
+	// 	// }
+	// 	// if qq.GetBool("onself", true) == true {
+	// 	OnGroupMessage(q, gm)
+	// 	// }
 	// })
 	bot.Client.OnNewFriendRequest(func(_ *client.QQClient, request *client.NewFriendRequest) {
 		if qq.GetBool("auto_friend", false) == true {
@@ -313,8 +324,12 @@ func start() {
 		if !cli.Online {
 			return
 		}
+		// id :=
 		bot.SendPrivateMessage(core.Int64(i), 0, &message.SendingMessage{Elements: bot.ConvertStringMessage(s, false)})
-		// bot.SendPrivateMessage(core.Int64(i), int64(qq.GetInt("tempMessageGroupCode")), &message.SendingMessage{Elements: bot.ConvertStringMessage(s, false)})
+		// if id != 0 {
+		// 	MSG := bot.GetMessage(id)
+		// 	dd.Store(MSG["internal-id"].(int32), true)
+		// }
 	}
 	core.GroupPushs["qq"] = func(i, _ interface{}, s string) {
 		if !cli.Online {
@@ -331,6 +346,10 @@ func start() {
 		}
 		//
 		bot.SendGroupMessage(core.Int64(i), &message.SendingMessage{Elements: append(bot.ConvertStringMessage(s, true), imgs...)}) //&message.AtElement{Target: int64(j)}
+		// if id != 0 {
+		// 	MSG := bot.GetMessage(id)
+		// 	dd.Store(MSG["internal-id"].(int32), true)
+		// }
 	}
 
 	coolq.IgnoreInvalidCQCode = conf.Message.IgnoreInvalidCQCode
@@ -342,10 +361,10 @@ func start() {
 	if http_server := qq.Get("http_server"); http_server != "" {
 		port := 80
 		host := "127.0.0.1"
-		res := strings.Split("http_server", ":")
-		if len(res) == 1 {
-			host = res[0]
-		}
+		res := strings.Split(http_server, ":")
+
+		host = res[0]
+
 		if len(res) == 2 {
 			port = core.Int(res[1])
 		}

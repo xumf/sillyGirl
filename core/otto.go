@@ -23,7 +23,7 @@ var o = NewBucket("otto")
 func init() {
 	go func() {
 		time.Sleep(time.Second)
-		if sillyGirl.GetBool("enable_price", true) {
+		if o.GetBool("enable_price", true) {
 			os.MkdirAll("develop/replies", os.ModePerm)
 			if data, err := os.ReadFile("scripts/jd_price.js"); err == nil {
 				os.WriteFile("develop/replies/jd_price.js", data, os.ModePerm)
@@ -94,6 +94,11 @@ func init123() {
 		o.Set(key.String(), value.String())
 		return otto.Value{}
 	}
+	sleep := func(value otto.Value) interface{} {
+		i, _ := value.ToInteger()
+		time.Sleep(time.Duration(i) * time.Millisecond)
+		return otto.Value{}
+	}
 	push := func(call otto.Value) interface{} {
 		imType, _ := call.Object().Get("imType")
 		groupCode, _ := call.Object().Get("groupCode")
@@ -140,12 +145,19 @@ func init123() {
 			req = httplib.Delete(url)
 		case "post":
 			req = httplib.Post(url)
+
 		case "put":
 			req = httplib.Put(url)
+
 		default:
 			req = httplib.Get(url)
 		}
 		if body != "" {
+			if body != "" && body != "undefined" {
+				req.Body(body)
+				// 对于JSON对象，需要加上 Content-Type
+				req.Header("Content-Type", "application/json")
+			}
 			req.Body(body)
 		}
 		data, err := req.String()
@@ -255,6 +267,35 @@ func init123() {
 			vm.Set("GetUserID", func() otto.Value {
 				v, _ := otto.ToValue(s.GetUserID())
 				return v
+			})
+			vm.Set("input", func(vs ...otto.Value) interface{} {
+				str := ""
+				var i int64
+				j := ""
+				if len(vs) > 0 {
+					i, _ = vs[0].ToInteger()
+				}
+				if len(vs) > 1 {
+					j, _ = vs[1].ToString()
+				}
+				options := []interface{}{}
+				options = append(options, time.Duration(i)*time.Millisecond)
+				if j != "" {
+					options = append(options, ForGroup)
+				}
+				if rt := s.Await(s, nil, options...); rt != nil {
+					str = rt.(string)
+				}
+				v, _ := otto.ToValue(str)
+				return v
+			})
+
+			vm.Set("sleep", sleep)
+			vm.Set("isAdmin", func() interface{} {
+				if s.IsAdmin() {
+					return otto.TrueValue()
+				}
+				return otto.FalseValue()
 			})
 			vm.Set("set", set)
 			vm.Set("param", param)

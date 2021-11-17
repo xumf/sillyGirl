@@ -120,6 +120,20 @@ func handleMessage(sender Sender) {
 	if mtd && !con {
 		return
 	}
+
+	reply.Foreach(func(k, v []byte) error {
+		if string(v) == "" {
+			return nil
+		}
+		reg, err := regexp.Compile(string(k))
+		if err == nil {
+			if reg.FindString(sender.GetContent()) != "" {
+				sender.Reply(string(v))
+			}
+		}
+		return nil
+	})
+
 	// logs.Info("%v ==> %v", sender.GetContent(), "passed")
 	// if v, ok := waits.Load(key); ok {
 	// 	c := v.(*Carry)
@@ -162,6 +176,7 @@ func handleMessage(sender Sender) {
 					sender.Reply(rt)
 				}
 				if sender.IsContinue() {
+					sender.ClearContinue()
 					goto goon
 				}
 				return
@@ -169,18 +184,6 @@ func handleMessage(sender Sender) {
 		}
 	goon:
 	}
-	reply.Foreach(func(k, v []byte) error {
-		if string(v) == "" {
-			return nil
-		}
-		reg, err := regexp.Compile(string(k))
-		if err == nil {
-			if reg.FindString(sender.GetContent()) != "" {
-				sender.Reply(string(v))
-			}
-		}
-		return nil
-	})
 
 	recall := sillyGirl.Get("recall")
 	if recall != "" {

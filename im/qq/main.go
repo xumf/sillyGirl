@@ -293,15 +293,12 @@ func start() {
 	bot.Client.OnPrivateMessage(onPrivateMessage)
 	bot.Client.OnGroupMessage(OnGroupMessage)
 	bot.Client.OnTempMessage(onTempMessage)
-	// bot.Client.OnSelfPrivateMessage(func(q *client.QQClient, pm *message.PrivateMessage) {
-	// 	time.Sleep(time.Microsecond * 500)
-	// 	logs.Debug("receive message-id=%d internal-id=%d self=%d target=%d", pm.Id, pm.InternalId, pm.Self, pm.Target)
-	// 	// if _, ok := dd.Load(pm.InternalId); ok {
-	// 	// 	return
-	// 	// }
-	// 	// if qq.GetBool("onself", true) == true {
+	// cli.OnSelfPrivateMessage(func(q *client.QQClient, pm *message.PrivateMessage) {
+	// 	time.Sleep(time.Second * 1)
+	// 	if _, ok := dd.Load(pm.InternalId); ok {
+	// 		return
+	// 	}
 	// 	onPrivateMessage(q, pm)
-	// 	// }
 	// })
 	// bot.Client.OnSelfGroupMessage(func(q *client.QQClient, gm *message.GroupMessage) {
 	// 	time.Sleep(time.Microsecond * 500)
@@ -324,8 +321,19 @@ func start() {
 		if !cli.Online {
 			return
 		}
-		// id :=
 		bot.SendPrivateMessage(core.Int64(i), core.Int64(j), &message.SendingMessage{Elements: bot.ConvertStringMessage(s, false)})
+		// id :=
+		// dd.Store(pm, true)
+		// groupCode := core.Int64(j)
+		// if groupCode == 0 {
+		// 	bot.Client.SendPrivateMessage(core.Int64(i), &message.SendingMessage{Elements: bot.ConvertStringMessage(s, false)})
+		// 	// pm :=
+		// 	// dd.Store(pm.InternalId, true)
+		// } else {
+		// 	bot.Client.SendGroupTempMessage(groupCode, core.Int64(i), &message.SendingMessage{Elements: bot.ConvertStringMessage(s, false)})
+		// }
+
+		// bot.SendPrivateMessage(core.Int64(i), groupCode, &message.SendingMessage{Elements: bot.ConvertStringMessage(s, false)})
 		// if id != 0 {
 		// 	MSG := bot.GetMessage(id)
 		// 	dd.Store(MSG["internal-id"].(int32), true)
@@ -348,6 +356,7 @@ func start() {
 		if id := core.Int64(j); id != 0 {
 			options = append(options, &message.AtElement{Target: id})
 		}
+
 		bot.SendGroupMessage(core.Int64(i), &message.SendingMessage{Elements: append(options, append(bot.ConvertStringMessage(s, true), imgs...)...)}) //&message.AtElement{Target: int64(j)}
 		// if id != 0 {
 		// 	MSG := bot.GetMessage(id)

@@ -47,9 +47,9 @@ func init() {
 	initTask()
 	initEnv()
 	Config = &QingLong{}
-	Config.Host = qinglong.Get("host", "http://127.0.0.1:5700")
-	Config.ClientID = qinglong.Get("client_id")
-	Config.ClientSecret = qinglong.Get("client_secret")
+	Config.Host = qinglong.GetString("host", "http://127.0.0.1:5700")
+	Config.ClientID = qinglong.GetString("client_id")
+	Config.ClientSecret = qinglong.GetString("client_secret")
 	if Config.Host == "" {
 		return
 	}

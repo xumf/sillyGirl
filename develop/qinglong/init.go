@@ -23,7 +23,7 @@ type QingLong struct {
 }
 
 var Config *QingLong
-var qinglong = core.NewBucket("qinglong")
+var qinglong = core.MakeBucket("qinglong")
 
 var expiration int64
 var GET = "GET"

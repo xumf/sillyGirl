@@ -3,51 +3,66 @@ package core
 import (
 	"fmt"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
-	"time"
+	"sync"
+	"sync/atomic"
 
 	"github.com/beego/beego/v2/core/logs"
-	cron "github.com/robfig/cron/v3"
+	"github.com/cdle/sillyGirl/utils"
 )
 
-var c *cron.Cron
-
-func init() {
-	c = cron.New()
-	c.Start()
-}
+var total uint64 = 0
+var finished uint64 = 0
+var contents sync.Map
 
 type Function struct {
-	Rules   []string
-	FindAll bool
-	Admin   bool
-	Handle  func(s Sender) interface{}
-	Cron    string
+	Rules    []string
+	ImType   *Filter
+	UserId   *Filter
+	GroupId  *Filter
+	FindAll  bool
+	Admin    bool
+	Handle   func(s Sender) interface{}
+	Cron     string
+	Show     string
+	Priority int
+	Disable  bool
+	Hash     string
+}
+type Filter struct {
+	BlackMode bool
+	Items     []string
 }
 
-var pname = regexp.MustCompile(`/([^/\s]+)$`).FindStringSubmatch(os.Args[0])[1]
+var reply Bucket
 
 var name = func() string {
-	return sillyGirl.Get("name", "傻妞")
+	return sillyGirl.GetString("name", "傻妞")
 }
-
-var functions = []Function{}
+var Functions = []Function{}
 
 var Senders chan Sender
 
 func initToHandleMessage() {
+	reply = MakeBucket("reply")
 	Senders = make(chan Sender)
 	go func() {
 		for {
-			go handleMessage(<-Senders)
+			s := <-Senders
+			if s.GetImType() != "terminal" {
+				logs.Info("接收到消息：%s", s.GetContent())
+			}
+			go HandleMessage(s)
 		}
 	}()
 }
 
 func AddCommand(prefix string, cmds []Function) {
 	for j := range cmds {
+		if cmds[j].Disable {
+			continue
+		}
 		for i := range cmds[j].Rules {
 			if strings.Contains(cmds[j].Rules[i], "raw ") {
 				cmds[j].Rules[i] = strings.Replace(cmds[j].Rules[i], "raw ", "", -1)
@@ -67,26 +82,58 @@ func AddCommand(prefix string, cmds []Function) {
 			cmds[j].Rules[i] = strings.Replace(cmds[j].Rules[i], "?", `(\S+)`, -1)
 			cmds[j].Rules[i] = "^" + cmds[j].Rules[i] + "$"
 		}
-		functions = append(functions, cmds[j])
+		{
+			lf := len(Functions)
+			for i := range Functions {
+				f := lf - i - 1
+				if Functions[f].Priority > cmds[j].Priority {
+					Functions = append(Functions[:f+1], append([]Function{cmds[j]}, Functions[f+1:]...)...)
+					break
+				}
+			}
+			if len(Functions) == lf {
+				if lf > 0 {
+					if Functions[0].Priority < cmds[j].Priority && Functions[lf-1].Priority < cmds[j].Priority {
+						Functions = append([]Function{cmds[j]}, Functions...)
+					} else {
+						Functions = append(Functions, cmds[j])
+					}
+				} else {
+					Functions = append(Functions, cmds[j])
+				}
+			}
+		}
+
 		if cmds[j].Cron != "" {
 			cmd := cmds[j]
 			if _, err := c.AddFunc(cmds[j].Cron, func() {
 				cmd.Handle(&Faker{})
 			}); err != nil {
-				// logs.Warn("任务%v添加失败%v", cmds[j].Rules[0], err)
+
 			} else {
-				// logs.Warn("任务%v添加成功", cmds[j].Rules[0])
+
 			}
 		}
 	}
 }
 
-func handleMessage(sender Sender) {
-	content := TrimHiddenCharacter(sender.GetContent())
-	defer sender.Finish()
-
+func HandleMessage(sender Sender) {
+	num := atomic.AddUint64(&total, 1)
+	defer atomic.AddUint64(&finished, 1)
+	ct := sender.GetContent()
+	contents.Store(num, ct)
 	defer func() {
-		logs.Info("%v ==> %v", sender.GetContent(), "finished")
+		contents.Delete(num)
+	}()
+	content := utils.TrimHiddenCharacter(ct)
+	defer func() {
+		sender.Finish()
+		if sender.IsAtLast() {
+			s := sender.MessagesToSend()
+			if s != "" {
+				sender.Reply(s)
+			}
+		}
 	}()
 	u, g, i := fmt.Sprint(sender.GetUserID()), fmt.Sprint(sender.GetChatID()), fmt.Sprint(sender.GetImType())
 	con := true
@@ -101,10 +148,10 @@ func handleMessage(sender Sender) {
 		if imType != i {
 			return true
 		}
-		if chatID != g {
+		if chatID != g && forGroup != "me" {
 			return true
 		}
-		if userID != u && forGroup == "" {
+		if userID != u && (forGroup == "" || forGroup == "me") {
 			return true
 		}
 		if m := regexp.MustCompile(c.Pattern).FindString(content); m != "" {
@@ -115,31 +162,60 @@ func handleMessage(sender Sender) {
 				con = false
 				return false
 			}
-			content = TrimHiddenCharacter(sender.GetContent())
+			content = utils.TrimHiddenCharacter(sender.GetContent())
 		}
 		return true
 	})
 	if mtd && !con {
 		return
 	}
-
-	reply.Foreach(func(k, v []byte) error {
+	replied := false
+	MakeBucket(fmt.Sprintf("reply%s%d", sender.GetImType(), sender.GetChatID())).Foreach(func(k, v []byte) error {
 		if string(v) == "" {
 			return nil
 		}
 		reg, err := regexp.Compile(string(k))
 		if err == nil {
 			if reg.FindString(content) != "" {
-				sender.Reply(string(v))
+				replied = true
+				r := string(v)
+				if strings.Contains(r, "$") {
+					sender.Reply(reg.ReplaceAllString(content, r))
+				} else {
+					sender.Reply(r)
+				}
 			}
 		}
 		return nil
 	})
 
-	for _, function := range functions {
+	if !replied {
+		reply.Foreach(func(k, v []byte) error {
+			if string(v) == "" {
+				return nil
+			}
+			reg, err := regexp.Compile(string(k))
+			if err == nil {
+				if reg.FindString(content) != "" {
+					replied = true
+					r := string(v)
+					if strings.Contains(r, "$") {
+						sender.Reply(reg.ReplaceAllString(content, r))
+					} else {
+						sender.Reply(r)
+					}
+				}
+			}
+			return nil
+		})
+	}
+
+	for _, function := range Functions {
+		if black(function.ImType, sender.GetImType()) || black(function.UserId, sender.GetUserID()) || black(function.GroupId, fmt.Sprint(sender.GetChatID())) {
+			continue
+		}
 		for _, rule := range function.Rules {
 			var matched bool
-
 			if function.FindAll {
 				if res := regexp.MustCompile(rule).FindAllStringSubmatch(content, -1); len(res) > 0 {
 					tmp := [][]string{}
@@ -156,13 +232,9 @@ func handleMessage(sender Sender) {
 				}
 			}
 			if matched {
-				logs.Info("%v ==> %v", content, rule)
 				if function.Admin && !sender.IsAdmin() {
 					sender.Delete()
 					sender.Disappear()
-					// if sender.GetImType() != "wx" && sender.GetImType() != "qq" {
-					sender.Reply("再捣乱我就报警啦～")
-					// }
 					return
 				}
 				rt := function.Handle(sender)
@@ -171,16 +243,17 @@ func handleMessage(sender Sender) {
 				}
 				if sender.IsContinue() {
 					sender.ClearContinue()
-					content = TrimHiddenCharacter(sender.GetContent())
-					goto goon
+					content = utils.TrimHiddenCharacter(sender.GetContent())
+					logs.Info("继续到消息：%s", content)
+					goto next
 				}
 				return
 			}
 		}
-	goon:
+	next:
 	}
 
-	recall := sillyGirl.Get("recall")
+	recall := sillyGirl.GetString("recall")
 	if recall != "" {
 		recalled := false
 		for _, v := range strings.Split(recall, "&") {
@@ -189,7 +262,6 @@ func handleMessage(sender Sender) {
 				if reg.FindString(content) != "" {
 					if !sender.IsAdmin() && sender.GetImType() != "wx" {
 						sender.Delete()
-						sender.Reply("本妞清除了不好的消息～", time.Duration(time.Second))
 						recalled = true
 						break
 					}
@@ -201,20 +273,17 @@ func handleMessage(sender Sender) {
 		}
 	}
 }
-
-func FetchCookieValue(ps ...string) string {
-	var key, cookies string
-	if len(ps) == 2 {
-		if len(ps[0]) > len(ps[1]) {
-			key, cookies = ps[1], ps[0]
+func black(filter *Filter, str string) bool {
+	if filter != nil {
+		if filter.BlackMode {
+			if utils.Contains(filter.Items, str) {
+				return true
+			}
 		} else {
-			key, cookies = ps[0], ps[1]
+			if !utils.Contains(filter.Items, str) {
+				return true
+			}
 		}
 	}
-	match := regexp.MustCompile(key + `=([^;]*);{0,1}`).FindStringSubmatch(cookies)
-	if len(match) == 2 {
-		return match[1]
-	} else {
-		return ""
-	}
+	return false
 }

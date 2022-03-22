@@ -11,24 +11,26 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/astaxie/beego/httplib"
 	"github.com/beego/beego/v2/core/logs"
 	"github.com/cdle/sillyGirl/core"
+	"github.com/cdle/sillyGirl/utils"
 	"golang.org/x/net/proxy"
 	tb "gopkg.in/tucnak/telebot.v2"
 )
 
 type Sender struct {
-	Message  *tb.Message
-	Duration *time.Duration
-	deleted  bool
-	reply    *tb.Message
+	Message *tb.Message
+	deleted bool
+	reply   *tb.Message
 	core.BaseSender
+	sync.RWMutex
+	replied []tb.Message
 }
 
-var tg = core.NewBucket("tg")
+var tg = core.MakeBucket("tg")
 var b *tb.Bot
 var Transport *http.Transport
 var Handler = func(message *tb.Message) {
@@ -43,7 +45,7 @@ var Handler = func(message *tb.Message) {
 }
 
 func buildHttpTransportWithProxy() {
-	addr := tg.Get("http_proxy")
+	addr := tg.GetString("http_proxy")
 	if strings.Contains(addr, "http://") {
 		if addr != "" {
 			u, err := url.Parse(addr)
@@ -54,8 +56,9 @@ func buildHttpTransportWithProxy() {
 			Transport = &http.Transport{Proxy: http.ProxyURL(u)}
 		}
 	}
-	if strings.Contains(addr, "sock5://") {
+	if strings.Contains(addr, "sock5://") || strings.Contains(addr, "socks5://") {
 		addr = strings.Replace(addr, "sock5://", "", -1)
+		addr = strings.Replace(addr, "socks5://", "", -1)
 		var auth *proxy.Auth
 		v := strings.Split(addr, "@")
 		if len(v) == 3 {
@@ -78,12 +81,13 @@ func buildHttpTransportWithProxy() {
 
 func init() {
 	go func() {
-		if tg.Get("sock5") != "" {
-			tg.Set("http_proxy", "sock5://"+tg.Get("sock5"))
+		if tg.GetString("sock5") != "" {
+			tg.Set("http_proxy", "sock5://"+tg.GetString("sock5"))
 			tg.Set("sock5", "")
 		}
 		buildHttpTransportWithProxy()
-		token := tg.Get("token")
+		core.Transport = Transport
+		token := tg.GetString("token")
 		if token == "" {
 			logs.Warn("未提供telegram机器人token")
 			return
@@ -92,7 +96,7 @@ func init() {
 			Token:  token,
 			Poller: &tb.LongPoller{Timeout: 10 * time.Second},
 			// ParseMode: tb.ModeMarkdownV2,
-			URL: tg.Get("url"),
+			URL: tg.GetString("url"),
 		}
 		if Transport != nil {
 			settings.Client = &http.Client{Transport: Transport}
@@ -101,17 +105,18 @@ func init() {
 		b, err = tb.NewBot(settings)
 
 		if err != nil {
-			logs.Warn("监听telegram机器人失败：%v", err)
+			logs.Warn("Telegram机器人运行失败：%v", err)
 			return
 		}
-		core.Pushs["tg"] = func(i interface{}, s string, _ interface{}) {
-			b.Send(&tb.User{ID: core.Int(i)}, s)
+		core.Pushs["tg"] = func(i interface{}, s string, _ interface{}, _ string) {
+			b.Send(&tb.User{ID: utils.Int(i)}, s)
 		}
-		core.GroupPushs["tg"] = func(i, _ interface{}, s string) {
+		core.GroupPushs["tg"] = func(i, _ interface{}, s string, _ string) {
 			paths := []string{}
-			ct := &tb.Chat{ID: core.Int64(i)}
+			ct := &tb.Chat{ID: utils.Int64(i)}
+			s = regexp.MustCompile(`file=[^\[\]]*,url`).ReplaceAllString(s, "file")
 			for _, v := range regexp.MustCompile(`\[CQ:image,file=([^\[\]]+)\]`).FindAllStringSubmatch(s, -1) {
-				paths = append(paths, "data/images/"+v[1])
+				paths = append(paths, v[1])
 				s = strings.Replace(s, fmt.Sprintf(`[CQ:image,file=%s]`, v[1]), "", -1)
 			}
 			s = regexp.MustCompile(`\[CQ:([^\[\]]+)\]`).ReplaceAllString(s, "")
@@ -127,37 +132,52 @@ func init() {
 			if len(paths) > 0 {
 				is := []tb.InputMedia{}
 				for index, path := range paths {
-					data, err := os.ReadFile(path)
-					if err == nil {
-						url := regexp.MustCompile("(https.*)").FindString(string(data))
-						if url != "" {
-							// rsp, err := httplib.Get(url).Response()
-							// if err == nil {
-							// 	i := &tb.Photo{File: tb.FromReader(rsp.Body)}
-							// 	if index == 0 {
-							// 		i.Caption = s
-							// 	}
-							// 	is = append(is, i)
-							// }
-							i := &tb.Photo{File: tb.FromURL(url)}
-
-							if index == 0 {
+					// fmt.Println(path, s)
+					if strings.HasPrefix(path, "http") {
+						i := &tb.Photo{File: tb.FromURL(path)}
+						if index == 0 {
+							if s != "" {
 								i.Caption = s
 							}
-							is = append(is, i)
+						}
+						is = append(is, i)
+					} else {
+						data, err := os.ReadFile("data/images/" + path)
+						if err == nil {
+							url := regexp.MustCompile("(https.*)").FindString(string(data))
+							if url != "" {
+								// rsp, err := httplib.Get(url).Response()
+								// if err == nil {
+								// 	i := &tb.Photo{File: tb.FromReader(rsp.Body)}
+								// 	if index == 0 {
+								// 		i.Caption = s
+								// 	}
+								// 	is = append(is, i)
+								// }
+								i := &tb.Photo{File: tb.FromURL(url)}
+
+								if index == 0 {
+									i.Caption = s
+								}
+								is = append(is, i)
+							}
 						}
 					}
 				}
 				b.SendAlbum(ct, is)
 				return
 			}
+			s = strings.Trim(s, "\n")
 			b.Send(ct, s)
 		}
 		b.Handle(tb.OnPhoto, func(m *tb.Message) {
 			filename := fmt.Sprint(time.Now().UnixNano()) + ".image"
 			filepath := "data/images/" + filename
+
+			// fmt.Println(m.Photo.FileLocal, "++++++++++++")
 			if b.Download(&m.Photo.File, filepath) == nil {
-				m.Text = fmt.Sprintf(`[TG:image,file=%s]`, filename) + m.Caption
+				// fmt.Sprintf(`[TG:image,file=%s]`, filename)
+				m.Text = m.Caption
 				Handler(m)
 			}
 		})
@@ -187,7 +207,7 @@ func init() {
 		// 	Handler(m)
 		// })
 		b.Handle(tb.OnText, Handler)
-		logs.Info("监听telegram机器人")
+		logs.Info("Telegram机器人已运行。")
 		b.Start()
 	}()
 }
@@ -215,8 +235,8 @@ func (sender *Sender) GetImType() string {
 	return "tg"
 }
 
-func (sender *Sender) GetMessageID() int {
-	return sender.Message.ID
+func (sender *Sender) GetMessageID() string {
+	return "-1"
 }
 
 func (sender *Sender) GetUsername() string {
@@ -225,6 +245,10 @@ func (sender *Sender) GetUsername() string {
 		name = fmt.Sprint(sender.Message.Sender.ID)
 	}
 	return name
+}
+
+func (sender *Sender) GetChatname() string {
+	return sender.Message.Chat.Title
 }
 
 func (sender *Sender) IsReply() bool {
@@ -247,15 +271,16 @@ func (sender *Sender) IsAdmin() bool {
 		return true
 	}
 
-	return strings.Contains(tg.Get("masters"), fmt.Sprint(sender.Message.Sender.ID))
+	return strings.Contains(tg.GetString("masters"), fmt.Sprint(sender.Message.Sender.ID))
 }
 
 func (sender *Sender) IsMedia() bool {
 	return false
 }
 
-func (sender *Sender) Reply(msgs ...interface{}) (int, error) {
+func (sender *Sender) Reply(msgs ...interface{}) ([]string, error) {
 	msg := msgs[0]
+	ids := []string{}
 	var edit *core.Edit
 	var replace *core.Replace
 	for _, item := range msgs {
@@ -280,7 +305,9 @@ func (sender *Sender) Reply(msgs ...interface{}) (int, error) {
 		r = sender.Message.Chat
 		if !sender.deleted {
 			if sender.Message.ReplyTo == nil {
-				options = []interface{}{&tb.SendOptions{ReplyTo: sender.Message}}
+				if !sender.deleted {
+					options = []interface{}{&tb.SendOptions{ReplyTo: sender.Message}}
+				}
 			} else {
 				options = []interface{}{&tb.SendOptions{ReplyTo: sender.Message.ReplyTo}}
 			}
@@ -290,10 +317,21 @@ func (sender *Sender) Reply(msgs ...interface{}) (int, error) {
 	switch msg.(type) {
 	case error:
 		rt, err = b.Send(r, fmt.Sprintf("%v", msg), options...)
+		if err == nil {
+			ids = append(ids, sender.addReplied(*rt)...)
+		}
 	case []byte:
 		rt, err = b.Send(r, string(msg.([]byte)), options...)
+		if err == nil {
+			ids = append(ids, sender.addReplied(*rt)...)
+		}
+
 	case string:
 		message := msg.(string)
+		if sender.Atlast && !sender.IsFinished {
+			sender.ToSendMessages = append(sender.ToSendMessages, message)
+			return []string{}, nil
+		}
 		if edit != nil && sender.reply != nil {
 			if *edit == 0 {
 				if sender.reply != nil {
@@ -305,11 +343,12 @@ func (sender *Sender) Reply(msgs ...interface{}) (int, error) {
 				}, msg.(string))
 			}
 			if sender.reply == nil {
-				return 0, nil
+				return []string{}, nil
 			}
-			return sender.reply.ID, nil
+			return ids, nil
 		}
 		paths := []string{}
+		message = regexp.MustCompile(`file=[^\[\]]*,url`).ReplaceAllString(message, "file")
 		for _, v := range regexp.MustCompile(`\[CQ:image,file=([^\[\]]+)\]`).FindAllStringSubmatch(message, -1) {
 			paths = append(paths, v[1])
 			message = strings.Replace(message, fmt.Sprintf(`[CQ:image,file=%s]`, v[1]), "", -1)
@@ -318,13 +357,18 @@ func (sender *Sender) Reply(msgs ...interface{}) (int, error) {
 			is := []tb.InputMedia{}
 			for index, path := range paths {
 				if strings.Contains(path, "base64") {
-
 					decodeBytes, err := base64.StdEncoding.DecodeString(strings.Replace(path, "base64://", "", -1))
 					if err != nil {
-						sender.Reply(path[len(path)-20:])
-						sender.Reply(err)
+						// sender.Reply(path[len(path)-20:])
+						// sender.Reply(err)
 					}
 					i := &tb.Photo{File: tb.FromReader(bytes.NewReader(decodeBytes))}
+					if index == 0 {
+						i.Caption = message
+					}
+					is = append(is, i)
+				} else if strings.HasPrefix(path, "http") {
+					i := &tb.Photo{File: tb.FromURL(path)}
 					if index == 0 {
 						i.Caption = message
 					}
@@ -343,9 +387,16 @@ func (sender *Sender) Reply(msgs ...interface{}) (int, error) {
 					}
 				}
 			}
-			b.SendAlbum(r, is, options...)
+			rt, err := b.SendAlbum(r, is, options...)
+			if err == nil {
+				ids = append(ids, sender.addReplied(rt...)...)
+			}
+
 		} else {
 			rt, err = b.Send(r, message, options...)
+			if err == nil {
+				ids = append(ids, sender.addReplied(*rt)...)
+			}
 		}
 		if replace != nil {
 			b.Delete(&tb.Message{
@@ -356,28 +407,53 @@ func (sender *Sender) Reply(msgs ...interface{}) (int, error) {
 		f, err := os.Open(string(msg.(core.ImagePath)))
 		if err != nil {
 			sender.Reply(err)
-			return 0, nil
+			return []string{}, nil
 		} else {
 			rts, err := b.SendAlbum(r, tb.Album{&tb.Photo{File: tb.FromReader(f)}}, options...)
 			if err == nil {
 				rt = &rts[0]
+				ids = append(ids, sender.addReplied(rts...)...)
 			}
 		}
 	case core.ImageUrl:
-		rsp, err := httplib.Get(string(msg.(core.ImageUrl))).Response()
+		// rsp, err := httplib.Get(string(msg.(core.ImageUrl))).Response()
+		// if err != nil {
+		// 	sender.Reply(err)
+		// 	return 0, nil
+		// } else {
+
+		// }
+		rts, err := b.SendAlbum(r, tb.Album{&tb.Photo{File: tb.FromURL(string(msg.(core.ImageUrl)))}}, options...)
+		if err == nil {
+			ids = append(ids, sender.addReplied(rts...)...)
+		}
+	case core.VideoUrl:
+		rts, err := b.SendAlbum(r, tb.Album{&tb.Video{File: tb.FromURL(string(msg.(core.VideoUrl)))}}, options...)
+		if err == nil {
+			ids = append(ids, sender.addReplied(rts...)...)
+
+		}
+	case core.ImageData:
+		rts, err := b.SendAlbum(r, tb.Album{&tb.Photo{File: tb.FromReader(bytes.NewReader(msg.(core.ImageData)))}}, options...)
+		if err == nil {
+			ids = append(ids, sender.addReplied(rts...)...)
+
+		}
+	case core.ImageBase64:
+		data, err := base64.StdEncoding.DecodeString(string(msg.(core.ImageBase64)))
 		if err != nil {
-			sender.Reply(err)
-			return 0, nil
-		} else {
-			rts, err := b.SendAlbum(r, tb.Album{&tb.Photo{File: tb.FromReader(rsp.Body)}}, options...)
-			if err == nil {
-				rt = &rts[0]
-			}
+			// sender.Reply(err)
+			return ids, nil
+		}
+		rts, err := b.SendAlbum(r, tb.Album{&tb.Photo{File: tb.FromReader(bytes.NewReader(data))}}, options...)
+		if err == nil {
+			ids = append(ids, sender.addReplied(rts...)...)
+
 		}
 	}
-	if err != nil {
-		sender.Reply(err)
-	}
+	// if err != nil {
+	// 	sender.Reply(err)
+	// }
 	if rt != nil && sender.Duration != nil {
 		if *sender.Duration != 0 {
 			go func() {
@@ -394,9 +470,9 @@ func (sender *Sender) Reply(msgs ...interface{}) (int, error) {
 		sender.reply = rt
 	}
 	if sender.reply != nil {
-		return sender.reply.ID, err
+		return ids, err
 	}
-	return 0, nil
+	return ids, nil
 }
 
 func (sender *Sender) Delete() error {
@@ -405,7 +481,8 @@ func (sender *Sender) Delete() error {
 	}
 	msg := *sender.Message
 	sender.deleted = true
-	return b.Delete(&msg)
+	b.Delete(&msg)
+	return nil
 }
 
 func (sender *Sender) Disappear(lifetime ...time.Duration) {
@@ -416,11 +493,55 @@ func (sender *Sender) Disappear(lifetime ...time.Duration) {
 	}
 }
 
-func (sender *Sender) Finish() {
-
-}
-
 func (sender *Sender) Copy() core.Sender {
 	new := reflect.Indirect(reflect.ValueOf(interface{}(sender))).Interface().(Sender)
 	return &new
+}
+
+func (sender *Sender) RecallMessage(ps ...interface{}) error {
+	sender.RLock()
+	defer sender.RUnlock()
+	for _, p := range ps {
+		switch p.(type) {
+		case string:
+			if p.(string) == "-1" {
+				if !sender.deleted {
+					sender.deleted = true
+				}
+				b.Delete(sender.Message)
+			} else {
+				b.Delete(&sender.replied[utils.Int(p.(string))])
+			}
+		case []string:
+			for _, v := range p.([]string) {
+				b.Delete(&sender.replied[utils.Int(v)])
+			}
+		}
+	}
+	return nil
+}
+
+func (sender *Sender) addReplied(toadd ...tb.Message) []string {
+	sender.Lock()
+	defer sender.Unlock()
+	rt := []string{}
+	for _, v := range toadd {
+		rt = append(rt, fmt.Sprint(len(sender.replied)))
+		sender.replied = append(sender.replied, v)
+	}
+	return rt
+}
+
+func (sender *Sender) GroupBan(uid string, duration int) {
+	if duration < 60 {
+		duration = 60
+	}
+	b.Ban(sender.Message.Chat, &tb.ChatMember{
+		User:            &tb.User{ID: utils.Int(uid)},
+		RestrictedUntil: time.Now().Unix() + int64(duration),
+	})
+}
+
+func (sender *Sender) GroupKick(uid string, reject_add_request bool) {
+
 }

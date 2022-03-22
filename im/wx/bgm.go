@@ -4,11 +4,17 @@ import (
 	"github.com/cdle/sillyGirl/core"
 )
 
-var wx = core.NewBucket("wx")
+var wx = core.MakeBucket("wx")
 var api_url = func() string {
-	return wx.Get("api_url")
+	if v := wx.GetString("vlw_addr"); v != "" {
+		return v
+	}
+	if v := wx.GetString("api_url"); v != "" {
+		return v
+	}
+	return ""
 }
-var robot_wxid = wx.Get("robot_wxid")
+var robot_wxid = wx.GetString("robot_wxid")
 
 type TextMsg struct {
 	Event      string `json:"event"`
@@ -41,6 +47,7 @@ type wxmsg struct {
 	user_id   string
 	chat_id   int
 	user_name string
+	chat_name string
 }
 
 type Sender struct {

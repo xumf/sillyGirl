@@ -4,17 +4,23 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Han-Ya-Jun/qrcode2console"
+	"github.com/cdle/sillyGirl/utils"
 )
 
 type Sender interface {
 	GetUserID() string
 	GetChatID() int
 	GetImType() string
-	GetMessageID() int
+	GetMessageID() string
+	RecallMessage(...interface{}) error
 	GetUsername() string
+	GetChatname() string
 	IsReply() bool
 	GetReplySenderUserID() int
 	GetRawMessage() interface{}
@@ -27,7 +33,7 @@ type Sender interface {
 	SetContent(string)
 	IsAdmin() bool
 	IsMedia() bool
-	Reply(...interface{}) (int, error)
+	Reply(...interface{}) ([]string, error)
 	Delete() error
 	Disappear(lifetime ...time.Duration)
 	Finish()
@@ -36,6 +42,12 @@ type Sender interface {
 	ClearContinue()
 	Await(Sender, func(Sender) interface{}, ...interface{}) interface{}
 	Copy() Sender
+	GroupKick(uid string, reject_add_request bool)
+	GroupBan(uid string, duration int)
+	AtLast()
+	UAtLast()
+	IsAtLast() bool
+	MessagesToSend() string
 }
 
 type Edit int
@@ -47,18 +59,29 @@ var E Edit
 var R Replace
 var N Notify
 
+type ImageData []byte
+type ImageBase64 string
 type ImageUrl string
 type ImagePath string
+type VideoUrl string
 
 type Faker struct {
 	Message string
 	Type    string
 	UserID  string
 	ChatID  int
+	Carry   chan string
 	BaseSender
 }
 
+func (sender *Faker) Listen() chan string {
+	return sender.Carry
+}
+
 func (sender *Faker) GetContent() string {
+	if sender.Content != "" {
+		return sender.Content
+	}
 	return sender.Message
 }
 
@@ -77,11 +100,15 @@ func (sender *Faker) GetImType() string {
 	return sender.Type
 }
 
-func (sender *Faker) GetMessageID() int {
-	return 0
+func (sender *Faker) GetMessageID() string {
+	return ""
 }
 
 func (sender *Faker) GetUsername() string {
+	return ""
+}
+
+func (sender *Faker) GetChatname() string {
 	return ""
 }
 
@@ -105,7 +132,7 @@ func (sender *Faker) IsMedia() bool {
 	return false
 }
 
-func (sender *Faker) Reply(msgs ...interface{}) (int, error) {
+func (sender *Faker) Reply(msgs ...interface{}) ([]string, error) {
 	rt := ""
 	var n *Notify
 	for _, msg := range msgs {
@@ -114,15 +141,37 @@ func (sender *Faker) Reply(msgs ...interface{}) (int, error) {
 			rt = (string(msg.([]byte)))
 		case string:
 			rt = (msg.(string))
+		case ImageUrl:
+
 		case Notify:
 			v := msg.(Notify)
 			n = &v
 		}
 	}
+	{
+
+		for _, v := range regexp.MustCompile(`\[CQ:image,file=([^\[\]]+)\]`).FindAllStringSubmatch(rt, -1) {
+			qr := qrcode2console.NewQRCode2ConsoleWithUrl(v[1], true)
+			defer qr.Output()
+			rt = strings.Replace(rt, fmt.Sprintf(`[CQ:image,file=%s]`, v[1]), "", -1)
+		}
+	}
+
 	if rt != "" && n != nil {
 		NotifyMasters(rt)
 	}
-	return 0, nil
+
+	if rt != "" {
+		if sender.Type == "carry" {
+			if sender.Carry != nil {
+				sender.Carry <- rt
+			}
+		} else if sender.Type == "terminal" {
+			fmt.Printf("\x1b[%dm%s \x1b[0m\n", 31, rt)
+		}
+	}
+
+	return []string{}, nil
 }
 
 func (sender *Faker) Delete() error {
@@ -134,7 +183,9 @@ func (sender *Faker) Disappear(lifetime ...time.Duration) {
 }
 
 func (sender *Faker) Finish() {
-
+	if sender.Carry != nil {
+		close(sender.Carry)
+	}
 }
 
 func (sender *Faker) Copy() Sender {
@@ -142,11 +193,23 @@ func (sender *Faker) Copy() Sender {
 	return &new
 }
 
+func (sender *Faker) GroupKick(uid string, reject_add_request bool) {
+
+}
+
+func (sender *Faker) GroupBan(uid string, duration int) {
+
+}
+
 type BaseSender struct {
-	matches [][]string
-	goon    bool
-	child   Sender
-	Content string
+	matches        [][]string
+	goon           bool
+	child          Sender
+	Content        string
+	Atlast         bool
+	ToSendMessages []string
+	IsFinished     bool
+	Duration       *time.Duration
 }
 
 func (sender *BaseSender) SetMatch(ss []string) {
@@ -203,7 +266,7 @@ func (sender *BaseSender) Disappear(lifetime ...time.Duration) {
 }
 
 func (sender *BaseSender) Finish() {
-
+	sender.IsFinished = true
 }
 
 func (sender *BaseSender) IsMedia() bool {
@@ -218,8 +281,12 @@ func (sender *BaseSender) IsReply() bool {
 	return false
 }
 
-func (sender *BaseSender) GetMessageID() int {
-	return 0
+func (sender *BaseSender) GetMessageID() string {
+	return ""
+}
+
+func (sender *BaseSender) RecallMessage(...interface{}) error {
+	return nil
 }
 
 func (sender *BaseSender) GetUserID() string {
@@ -230,6 +297,46 @@ func (sender *BaseSender) GetChatID() int {
 }
 func (sender *BaseSender) GetImType() string {
 	return ""
+}
+
+func (sender *BaseSender) GroupKick(uid string, reject_add_request bool) {
+
+}
+
+func (sender *BaseSender) GroupBan(uid string, duration int) {
+
+}
+
+func (sender *BaseSender) GetUsername() string {
+	return ""
+}
+
+func (sender *BaseSender) IsAdmin() bool {
+	return false
+}
+
+func (sender *BaseSender) GetChatname() string {
+	return ""
+}
+
+func (sender *BaseSender) GetReplySenderUserID() int {
+	return 0
+}
+
+func (sender *BaseSender) AtLast() {
+	sender.Atlast = true
+}
+
+func (sender *BaseSender) UAtLast() {
+	sender.Atlast = false
+}
+
+func (sender *BaseSender) IsAtLast() bool {
+	return sender.Atlast
+}
+
+func (sender *BaseSender) MessagesToSend() string {
+	return strings.Join(sender.ToSendMessages, "\n")
 }
 
 var TimeOutError = errors.New("指令超时")
@@ -268,7 +375,7 @@ var ForGroup forGroup
 
 func (_ *BaseSender) Await(sender Sender, callback func(Sender) interface{}, params ...interface{}) interface{} {
 	c := &Carry{}
-	timeout := time.Second * 86400000
+	timeout := time.Hour * 999999
 	var handleErr func(error)
 	var fg *forGroup
 	for _, param := range params {
@@ -298,9 +405,9 @@ func (_ *BaseSender) Await(sender Sender, callback func(Sender) interface{}, par
 	c.Chan = make(chan interface{}, 1)
 	c.Result = make(chan interface{}, 1)
 
-	key := fmt.Sprintf("u=%v&c=%v&i=%v", sender.GetUserID(), sender.GetChatID(), sender.GetImType())
+	key := fmt.Sprintf("u=%v&c=%v&i=%v&t=%v", sender.GetUserID(), sender.GetChatID(), sender.GetImType(), time.Now().UnixNano())
 	if fg != nil {
-		key += fmt.Sprintf("&t=%v&f=true", time.Now().Unix())
+		key += fmt.Sprintf("&f=true")
 	}
 	if oc, ok := waits.LoadOrStore(key, c); ok {
 		oc.(*Carry).Chan <- InterruptError
@@ -325,11 +432,11 @@ func (_ *BaseSender) Await(sender Sender, callback func(Sender) interface{}, par
 						c.Result <- string(v)
 					}
 				} else if _, ok := result.(YesOrNo); ok {
-					if strings.Contains(strings.ToLower(s.GetContent()), "y") {
+					o := strings.ToLower(regexp.MustCompile("[yYnN]").FindString(s.GetContent()))
+					if o == "y" {
 						return Yes
 					}
-
-					if strings.Contains(strings.ToLower(s.GetContent()), "n") {
+					if o == "n" {
 						return No
 					}
 					c.Result <- "Y or n ?"
@@ -343,7 +450,7 @@ func (_ *BaseSender) Await(sender Sender, callback func(Sender) interface{}, par
 					c.Result <- fmt.Sprintf("请从%s中选择一个。", strings.Join(vv, "、"))
 				} else if vv, ok := result.(Range); ok {
 					ct := s.GetContent()
-					n := Int(ct)
+					n := utils.Int(ct)
 					if fmt.Sprint(n) == ct {
 						if (n >= vv[0]) && (n <= vv[1]) {
 
@@ -353,7 +460,7 @@ func (_ *BaseSender) Await(sender Sender, callback func(Sender) interface{}, par
 					c.Result <- fmt.Sprintf("请从%d~%d中选择一个整数。", vv[0], vv[1])
 				} else {
 					c.Result <- result
-					return nil
+					return s.GetContent()
 				}
 			case error:
 				if handleErr != nil {

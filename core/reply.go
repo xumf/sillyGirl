@@ -13,8 +13,6 @@ import (
 	"github.com/buger/jsonparser"
 )
 
-var reply = NewBucket("reply")
-
 type Reply struct {
 	Rules   []string
 	Type    string //text url
@@ -22,9 +20,9 @@ type Reply struct {
 	Request struct {
 		Url          string
 		Method       string
-		Body         string // form-data raw
+		Body         string
 		Headers      []string
-		ResponseType string `yaml:"response_type"` //text json image
+		ResponseType string `yaml:"response_type"`
 		Get          string
 		Regex        string
 		Template     string
@@ -34,15 +32,6 @@ type Reply struct {
 }
 
 func InitReplies() {
-	appreciate := Reply{
-		Rules: []string{"^打赏", "^赞赏"},
-		Type:  "url",
-	}
-	recommand := "https://gitee.com/sillybot/sillyGirl/raw/main/appreciate.jpg"
-	appreciate.Request.Url = sillyGirl.Get("appreciate", recommand)
-	appreciate.Request.ResponseType = "image"
-	appreciate.Request.Disappear = true
-	Config.Replies = append([]Reply{appreciate}, Config.Replies...)
 	for _, v := range Config.Replies {
 		reply := v
 		var handler func(s Sender) interface{}
@@ -135,9 +124,9 @@ func InitReplies() {
 					s.Reply(err)
 					return true
 				}
-				if appreciate.Request.Url != recommand {
-					f += "\n" + Tail
-				}
+				// if appreciate.Request.Url != recommand {
+				// 	f += "\n" + Tail
+				// }
 				s.Reply(f)
 			case "template":
 				data := data()
@@ -210,9 +199,9 @@ func InitReplies() {
 					content = strings.Replace(content, v, "", -1)
 				}
 				content = strings.Replace(content, `[d]`, ",", -1)
-				if appreciate.Request.Url != recommand {
-					content += "\n" + Tail
-				}
+				// if appreciate.Request.Url != recommand {
+				// 	content += "\n" + Tail
+				// }
 				s.Reply(content)
 			default:
 				d := data()
@@ -223,7 +212,7 @@ func InitReplies() {
 			}
 			return nil
 		}
-		functions = append(functions, Function{
+		Functions = append(Functions, Function{
 			Rules:  reply.Rules,
 			Handle: handler,
 		})

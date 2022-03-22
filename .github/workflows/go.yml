@@ -17,10 +17,18 @@ jobs:
       uses: actions/setup-go@v2
       with:
         go-version: 1.17
-
+        
     - name: Git clone cable
       run:
-        cd develop && git clone https://${{ secrets.CABLE_TOKEN }}@github.com/cdle/cable.git
+        mkdir develop && cd develop && git clone https://${{ secrets.CABLE_TOKEN }}@github.com/cdle/cable.git
+    
+    - name: Git clone boltdb
+      run:
+        cd develop && git clone https://${{ secrets.CABLE_TOKEN }}@github.com/cdle/boltdb.git
+        
+    - name: Git clone qinglong
+      run:
+        cd develop && git clone https://${{ secrets.CABLE_TOKEN }}@github.com/cdle/qinglong.git
         
     - name: Git clone jd_price
       run:
@@ -28,7 +36,7 @@ jobs:
         
     - name: Git clone jd_cookie
       run:
-        cd develop && git clone https://github.com/ufuckee/jd_cookie.git
+        cd develop && git clone https://${{ secrets.CHESS }}@github.com/ufuckee/jd_cookie.git
         
     - name: Create dev.go
       run:
@@ -41,6 +49,7 @@ jobs:
         echo "var compiled_at = \"$n\"" >> core/compile_time.go
         GOOS=linux GOARCH=arm64 go build -ldflags "-s -w" -o sillyGirl_linux_arm64
         GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o sillyGirl_linux_amd64
+        GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o sillyGirl_windows_amd64.exe
         git clone https://${{ secrets.CABLE_TOKEN }}@github.com/cdle/binary.git
         git config --global user.email "you@example.com"
         git config --global user.name "Your Name"
@@ -55,6 +64,7 @@ jobs:
         rm -rf binary/*
         cp sillyGirl_linux_amd64 binary/sillyGirl_linux_amd64_$n 
         cp sillyGirl_linux_arm64 binary/sillyGirl_linux_arm64_$n
+        cp sillyGirl_windows_amd64.exe binary/sillyGirl_linux_windows_$n.exe
         cp core/compile_time.go  binary/compile_time.go
         cd binary
         git add . && git commit -m "update"
@@ -67,6 +77,15 @@ jobs:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
         file: sillyGirl_linux_amd64
         asset_name: sillyGirl_linux_amd64
+        tag: ${{ github.ref }}
+        overwrite: true
+    
+    - name: Upload to release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: sillyGirl_windows_amd64.exe
+        asset_name: sillyGirl_windows_amd64.exe
         tag: ${{ github.ref }}
         overwrite: true
 
